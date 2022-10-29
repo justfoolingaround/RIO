@@ -116,7 +116,7 @@ class RemoteIO(io.IOBase):
             self.buffer.seek(start)
             partition_n = end - start
 
-            if (start, end - 1) in self.existing_ranges:
+            if (start, end) in self.existing_ranges:
                 chunk += self.buffer.read(partition_n)
             else:
                 self.seek(start)

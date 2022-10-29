@@ -1,3 +1,7 @@
+import functools
+import itertools
+
+
 class ExistingRanges:
     def __init__(self):
         self.existing_ranges = set()
@@ -26,19 +30,17 @@ class ExistingRanges:
 
     def iter_partition(self, start, end):
 
-        if not self.existing_ranges:
+        (*partitioners,) = (
+            _
+            for _ in functools.reduce(tuple.__add__, self.existing_ranges, ())
+            if start < _ < end
+        )
+
+        if partitioners:
+            genexp = itertools.chain((start,), partitioners, (end,))
+            yield from zip(genexp, genexp)
+        else:
             yield (start, end)
-            return
-
-        for element_start, element_end in self.existing_ranges.copy():
-            if start < element_start:
-                yield ((start, element_start))
-
-            if element_start < end:
-                yield ((element_start, min(end, element_end)))
-
-            if element_end < end:
-                yield ((element_end, end))
 
     def __contains__(self, other):
         (start, end) = other
