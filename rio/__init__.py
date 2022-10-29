@@ -141,6 +141,21 @@ class RemoteIO(io.IOBase):
     def tell(self):
         return self.pos
 
+    def seekable(self):
+        return True
+
+    def readable(self):
+        return True
+
+    def writable(self):
+        return False
+
+    def close(self):
+        if self.streaming_response is not None:
+            self.streaming_response.close()
+
+        self.session.close()
+
     def attempt_size_resolving(self):
 
         if self.server_full_size is not None:
