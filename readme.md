@@ -26,6 +26,8 @@ And basically more.
 ```py
 import zipfile
 
+import humanize
+
 from rio import RemoteIO
 
 ZIP_FILE_URL = "https://oxygenos.oneplus.net/OnePlus8TOxygen_15.E.29_OTA_0290_all_2110091931_downgrade"
@@ -34,7 +36,7 @@ ZIP_FILE_URL = "https://oxygenos.oneplus.net/OnePlus8TOxygen_15.E.29_OTA_0290_al
 HTTP/1.1 200 OK
 ...
 Content-Type: application/java-archive
-Content-Length: 2976128617 (2.8 GB)
+Content-Length: 2976128617 (3.0 GB)
 ...
 Accept-Ranges: bytes
 ...
@@ -48,6 +50,6 @@ with zipfile.ZipFile(rio) as zf:
     zf.extract("payload_properties.txt")
 
 print(
-    f"Efficience (% of the full file downloaded by RIO): {rio.server_read / rio.server_full_size * 100:.010f}%"
-) # 0.0022035338% == ~66kB out of 2.8GB
+    f"{rio.server_read / rio.server_full_size * 100:.010f}% == {humanize.naturalsize(rio.server_read)} out of {humanize.naturalsize(rio.server_full_size)}"
+) # 0.0022027946% == 65.6 kB out of 3.0 GB
 ```
