@@ -7,7 +7,7 @@ from .utils import ExistingRanges
 
 
 class RemoteIO(io.IOBase):
-    def __init__(self, *args, session=None, **kwargs):
+    def __init__(self, *args, session=None, buffer=None, **kwargs):
 
         self.session: requests.Session = session or requests.Session()
         self.request_args = args
@@ -17,7 +17,7 @@ class RemoteIO(io.IOBase):
 
         self.pos = 0
 
-        self.buffer = io.BytesIO()
+        self.buffer = buffer or io.BytesIO()
         self.existing_ranges = ExistingRanges()
 
         self.streaming_response = None
