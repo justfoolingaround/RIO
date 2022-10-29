@@ -105,16 +105,22 @@ class RemoteIO(io.IOBase):
                 "Using packages that don't try to read the entire file is highly recommended."
             )
 
-        partitions = self.existing_ranges.iter_partition(
-            self.pos,
-            (self.pos + n) if n is not None else self.attempt_size_resolving(),
+        file_size = self.attempt_size_resolving(force=True)
+
+        partitions = (
+            self.existing_ranges.iter_partition(
+                self.pos,
+                (self.pos + n) if n is not None else file_size,
+            )
+            if file_size is not None
+            else ((self.pos, None),)
         )
 
         chunk = b""
 
         for start, end in partitions:
             self.buffer.seek(start)
-            partition_n = end - start
+            partition_n = (end - start) if end is not None else None
 
             if (start, end) in self.existing_ranges:
                 chunk += self.buffer.read(partition_n)
@@ -149,17 +155,32 @@ class RemoteIO(io.IOBase):
 
         self.session.close()
 
-    def attempt_size_resolving(self):
+    def attempt_size_resolving(self, *, force=False):
         """
         Approximate the size of the file by the streaming responses
         opened through the .seek method.
 
         Content-Range header is expected to be in the form of
         "bytes 0-100/1000" where the last number is the size of the file.
-
-        Content-Length header is not typically common but kept as a failsafe
-        for servers that are not conventional.
         """
+        if force:
+            kwargs = self.request_kwargs.copy()
+
+            if kwargs.pop("method", None) is None:
+                args = self.request_args[1:]
+            else:
+                args = self.request_args
+
+            response_headers = self.session.head(*args, **kwargs).headers
+
+            content_length = int(response_headers.get("Content-Length", 0))
+
+            if content_length:
+                self.server_full_size = content_length
+                return self.server_full_size
+
+            return
+
         if self.server_full_size is not None:
             return self.server_full_size
 
@@ -169,13 +190,5 @@ class RemoteIO(io.IOBase):
         headers = self.streaming_response.headers
 
         if "Content-Range" in headers:
-            full_size = int(headers["Content-Range"].split("/")[1])
-        else:
-            if "Content-Length" in headers:
-                full_size = (
-                    int(headers["Content-Length"]) + self.streaming_response.offset
-                )
-
-        self.server_full_size = full_size
-
-        return full_size
+            self.server_full_size = int(headers["Content-Range"].split("/")[1])
+            return self.server_full_size
