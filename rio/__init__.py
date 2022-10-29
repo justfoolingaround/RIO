@@ -3,33 +3,7 @@ from warnings import warn
 
 import requests
 
-
-class ExistingRanges:
-    def __init__(self):
-        self.existing_ranges = set()
-
-    def add(self, start, end):
-        if (start, end) in self:
-            return
-
-        for starting, ending in list(self.existing_ranges):
-
-            if ending == start:
-                start = starting
-                self.existing_ranges.remove((starting, ending))
-            else:
-                if starting == end:
-                    end = ending
-                    self.existing_ranges.remove((starting, ending))
-
-        self.existing_ranges.add((start, end))
-
-    def __contains__(self, other):
-        (start, end) = other
-        return any(
-            starting <= start < ending and starting <= end < ending
-            for starting, ending in self.existing_ranges
-        )
+from .utils import ExistingRanges
 
 
 class RemoteIO(io.IOBase):
@@ -52,7 +26,23 @@ class RemoteIO(io.IOBase):
         self.server_full_size = None
 
     def seek(self, offset, whence=0):
+        """
+        Update the position of the stream to offset bytes,
+        relative to the position indicated by whence.
 
+        Check if the byte in the offset is already in the buffer,
+        if not, open a stream from that offset.
+
+        Initial seek would not know the size of the file, so
+        seeking relative to EOF (whence = 2) will not be able
+        to give the position.
+
+        After a response, the size of the file will be known and
+        the position will be approximated.
+
+        The request will not be made according to the read, hence
+        previous stream will be closed if a new position is seeked at.
+        """
         assert whence in (0, 1, 2), "Invalid whence"
 
         if whence == 0:
@@ -86,6 +76,9 @@ class RemoteIO(io.IOBase):
         else:
             byte_range = f"-{abs(offset)}"
 
+        if self.streaming_response is not None:
+            self.streaming_response.close()
+
         self.streaming_response = self.session.request(
             *self.request_args,
             headers=self.headers | {"Range": f"bytes={byte_range}"},
@@ -98,43 +91,43 @@ class RemoteIO(io.IOBase):
             self.pos = self.attempt_size_resolving() + offset
 
     def read(self, n=None):
+        """
+        Read n bytes from the stream, if n is None,
+        read all the stream.
+
+        The stream will be cached in a buffer so same
+        positional reads will not require any stream reading.
+        """
 
         if self.pos == 0 and n is None:
             warn(
-                "The RIO object is being read in full which is the worst case for its usage. Using packages that don't try to read the entire file is highly recommended."
+                "The RIO object is being read in full which is the worst case for its usage. "
+                "Using packages that don't try to read the entire file is highly recommended."
             )
 
-        if (
+        partitions = self.existing_ranges.iter_partition(
             self.pos,
-            (self.pos + n - 1) if n is not None else self.attempt_size_resolving(),
-        ) in self.existing_ranges:
-            self.buffer.seek(self.pos)
+            (self.pos + n) if n is not None else self.attempt_size_resolving(),
+        )
 
-            chunk = self.buffer.read(n)
-            chunk_size = len(chunk)
+        chunk = b""
 
-            self.pos += chunk_size
+        for start, end in partitions:
+            self.buffer.seek(start)
+            partition_n = end - start
 
-            if (
-                chunk_size < n & self.buffer.tell() == self.attempt_size_resolving()
-            ) | chunk_size == n:
-                return chunk
+            if (start, end - 1) in self.existing_ranges:
+                chunk += self.buffer.read(partition_n)
+            else:
+                self.seek(start)
+                server_chunk = self.streaming_response.raw.read(partition_n)
 
-            self.seek(n + chunk_size, 1)
-            return self.read(chunk_size - n)
+                self.server_read += self.buffer.write(server_chunk)
+                self.existing_ranges.add(start, end)
 
-        if self.streaming_response is None:
-            self.seek(self.pos)
+                chunk += server_chunk
 
-        chunk = self.streaming_response.raw.read(n)
-        chunk_size = len(chunk)
-        self.server_read += chunk_size
-
-        self.buffer.seek(self.pos, 0)
-        self.buffer.write(chunk)
-        self.existing_ranges.add(self.pos, self.pos + chunk_size)
-
-        self.pos += chunk_size
+        self.pos += len(chunk)
 
         return chunk
 
@@ -157,7 +150,16 @@ class RemoteIO(io.IOBase):
         self.session.close()
 
     def attempt_size_resolving(self):
+        """
+        Approximate the size of the file by the streaming responses
+        opened through the .seek method.
 
+        Content-Range header is expected to be in the form of
+        "bytes 0-100/1000" where the last number is the size of the file.
+
+        Content-Length header is not typically common but kept as a failsafe
+        for servers that are not conventional.
+        """
         if self.server_full_size is not None:
             return self.server_full_size
 
