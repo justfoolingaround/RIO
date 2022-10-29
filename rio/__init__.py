@@ -163,6 +163,9 @@ class RemoteIO(io.IOBase):
         Content-Range header is expected to be in the form of
         "bytes 0-100/1000" where the last number is the size of the file.
         """
+        if self.server_full_size is not None:
+            return self.server_full_size
+
         if force:
             kwargs = self.request_kwargs.copy()
 
@@ -180,9 +183,6 @@ class RemoteIO(io.IOBase):
                 return self.server_full_size
 
             return
-
-        if self.server_full_size is not None:
-            return self.server_full_size
 
         if self.streaming_response is None:
             return
