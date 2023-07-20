@@ -4,32 +4,38 @@ import itertools
 
 class ExistingRanges:
     def __init__(self):
-        self.existing_ranges = set()
+        self.existing_ranges = list()
 
     def add(self, start, end):
-        self.existing_ranges.add((start, end))
-        self.merge()
-
-    def merge(self):
-        if len(self.existing_ranges) in (0, 1):
+        if (start, end) in self.existing_ranges:
             return
 
-        intervals = list(self.existing_ranges)
+        if start > end:
+            start, end = end, start
+
+        self.existing_ranges.append((start, end))
+        self.existing_ranges = self.merge(self.existing_ranges)
+
+    @staticmethod
+    def merge(existing_ranges: list):
+        if len(existing_ranges) <= 1:
+            return existing_ranges
+
+        intervals = existing_ranges.copy()
         intervals.sort(key=lambda interval: interval[0])
 
         result = list((intervals.pop(0),))
 
         for start_i, end_i in intervals:
             edge_interval_start, edge_interval_end = result[-1]
-            if start_i <= edge_interval_end:
+            if start_i <= edge_interval_end + 1:
                 result[-1] = edge_interval_start, max(edge_interval_end, end_i)
             else:
                 result.append((start_i, end_i))
 
-        self.existing_ranges = set(result)
+        return result
 
     def iter_partition(self, start, end):
-
         (*partitioners,) = (
             _
             for _ in functools.reduce(tuple.__add__, self.existing_ranges, ())
@@ -44,7 +50,8 @@ class ExistingRanges:
 
     def __contains__(self, other):
         (start, end) = other
+
         return any(
-            starting <= start < ending and starting <= end < ending
+            starting <= start <= ending and starting <= end <= ending
             for starting, ending in self.existing_ranges
         )
