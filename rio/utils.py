@@ -43,8 +43,12 @@ class ExistingRanges:
         )
 
         if partitioners:
-            genexp = itertools.chain((start,), partitioners, (end,))
-            yield from zip(genexp, genexp)
+            values = (start, *partitioners, end)
+
+            genexp = iter(values)
+            genexp_ahead = iter(values[1:])
+
+            yield from zip(genexp, genexp_ahead)
         else:
             yield (start, end)
 

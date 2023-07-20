@@ -117,7 +117,6 @@ class RemoteIO(io.BytesIO):
         The stream will be cached in a buffer so same
         positional reads will not require any stream reading.
         """
-
         if self.pos == 0 and n is None:
             warn(
                 "The RIO object is being read in full which is the worst case for its usage. "
