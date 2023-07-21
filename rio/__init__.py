@@ -42,11 +42,11 @@ class RemoteIO(io.IOBase):
         initial = self.pos
 
         if whence == 0:
-            if self.pos == offset:
+            if self.pos == offset and self.streaming_response is not None:
                 self.logger.info(
                     f"Already at position {self.pos}; not attempting to seek at all."
                 )
-                return
+                return self.pos
 
             self.pos = offset
             hypothetical_range = (self.pos, self.pos + 1)
@@ -70,28 +70,28 @@ class RemoteIO(io.IOBase):
                 else:
                     raise ValueError("Invalid whence, must be 0, 1 or 2")
 
-        if initial == self.pos:
-            self.logger.info(
-                f"Already at position {self.pos}; not opening an unnecessary stream."
-            )
-            return
+        if self.streaming_response is not None:
+            if initial == self.pos:
+                self.logger.info(
+                    f"Already at position {self.pos}; not opening an unnecessary stream."
+                )
+                return self.pos
 
-        if hypothetical_range in self.existing_ranges:
+            if hypothetical_range in self.existing_ranges:
+                self.logger.info(
+                    f"Expected data at the range {hypothetical_range} is already in the buffer; not opening an unnecessary stream."
+                )
+                return self.pos
+
             self.logger.info(
-                f"Expected data at the range {hypothetical_range} is already in the buffer; not opening an unnecessary stream."
+                f"Closing the previous stream at position: {initial}, starting anew at position: {self.pos}"
             )
-            return
+            self.streaming_response.close()
 
         if whence <= 1:
             byte_range = f"{offset}-"
         else:
             byte_range = f"-{abs(offset)}"
-
-        if self.streaming_response is not None:
-            self.logger.info(
-                f"Closing the previous stream at position: {initial}, starting anew at position: {self.pos}"
-            )
-            self.streaming_response.close()
 
         self.logger.info(f"Requesting byte range: {byte_range} from the server.")
         self.streaming_response = self.session.request(
@@ -100,6 +100,8 @@ class RemoteIO(io.IOBase):
             **self.request_kwargs,
             stream=True,
         )
+
+        return self.pos
 
     def read(self, n: int = -1):
         if self.pos == 0 and not n + 1:
@@ -120,6 +122,8 @@ class RemoteIO(io.IOBase):
         )
 
         chunk = b""
+
+        initial_position = self.pos
 
         for start, end in partitions:
             self.buffer.seek(start)
@@ -151,7 +155,7 @@ class RemoteIO(io.IOBase):
 
                 chunk += server_chunk
 
-        self.pos += len(chunk)
+        self.pos = initial_position + len(chunk)
 
         return chunk
 
