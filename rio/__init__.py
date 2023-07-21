@@ -102,7 +102,7 @@ class RemoteIO(io.IOBase):
         )
 
     def read(self, n: int = -1):
-        if self.pos == 0 and n + 1:
+        if self.pos == 0 and not n + 1:
             warn(
                 "The RIO object is being read in full which is the worst case for its usage. "
                 "Using packages that don't try to read the entire file is highly recommended."
