@@ -1,12 +1,12 @@
 import functools
-import itertools
+import typing as t
 
 
 class ExistingRanges:
     def __init__(self):
-        self.existing_ranges = list()
+        self.existing_ranges: t.List[t.Tuple[int, int]] = list()
 
-    def add(self, start, end):
+    def add(self, start: int, end: int):
         if (start, end) in self.existing_ranges:
             return
 
@@ -35,7 +35,7 @@ class ExistingRanges:
 
         return result
 
-    def iter_partition(self, start, end):
+    def iter_partition(self, start: int, end: int):
         (*partitioners,) = (
             _
             for _ in functools.reduce(tuple.__add__, self.existing_ranges, ())
@@ -43,12 +43,7 @@ class ExistingRanges:
         )
 
         if partitioners:
-            values = (start, *partitioners, end)
-
-            genexp = iter(values)
-            genexp_ahead = iter(values[1:])
-
-            yield from zip(genexp, genexp_ahead)
+            yield from zip((start, *partitioners, end), (*partitioners, end))
         else:
             yield (start, end)
 
